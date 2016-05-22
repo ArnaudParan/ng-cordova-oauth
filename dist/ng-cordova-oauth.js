@@ -1070,7 +1070,8 @@
     'oauth.mercadolibre',
     'oauth.xing',
     'oauth.netatmo',
-    'oauth.trakttv'])
+    'oauth.trakttv',
+    'oauth.perso'])
     .factory("$cordovaOauth", cordovaOauth);
 
   function cordovaOauth(
@@ -1079,7 +1080,7 @@
     $ngCordovaTwitter, $ngCordovaMeetup, $ngCordovaSalesforce, $ngCordovaStrava, $ngCordovaWithings, $ngCordovaFoursquare, $ngCordovaMagento,
     $ngCordovaVkontakte, $ngCordovaOdnoklassniki, $ngCordovaImgur, $ngCordovaSpotify, $ngCordovaUber, $ngCordovaWindowslive, $ngCordovaYammer,
     $ngCordovaVenmo, $ngCordovaStripe, $ngCordovaRally, $ngCordovaFamilySearch, $ngCordovaEnvato, $ngCordovaWeibo, $ngCordovaJawbone, $ngCordovaUntappd,
-    $ngCordovaDribble, $ngCordovaPocket, $ngCordovaMercadolibre, $ngCordovaXing, $ngCordovaNetatmo, $ngCordovaTraktTv) {
+    $ngCordovaDribble, $ngCordovaPocket, $ngCordovaMercadolibre, $ngCordovaXing, $ngCordovaNetatmo, $ngCordovaTraktTv, $ngCordovaOauthPerso) {
 
     return {
       azureAD: $ngCordovaAzureAD.signin,
@@ -1121,7 +1122,8 @@
       mercadolibre: $ngCordovaMercadolibre.signin,
       xing: $ngCordovaXing.signin,
       netatmo: $ngCordovaNetatmo.signin,
-      trakttv: $ngCordovaTraktTv.signin
+      trakttv: $ngCordovaTraktTv.signin,
+      perso: $ngCordovaOauthPerso.signin
     };
   }
 
@@ -1166,7 +1168,8 @@
     '$ngCordovaMercadolibre',
     '$ngCordovaXing',
     '$ngCordovaNetatmo',
-    '$ngCordovaTraktTv'
+    '$ngCordovaTraktTv',
+    '$ngCordovaOauthPerso'
   ];
 })();
 
@@ -1634,6 +1637,75 @@
   }
 
   odnoklassniki.$inject = ['$q', '$http', '$cordovaOauthUtility'];
+})();
+
+(function() {
+  'use strict';
+
+  angular.module('oauth.perso', ['oauth.utils'])
+    .factory('$ngCordovaOauthPerso', perso);
+
+  function perso($q, $http, $cordovaOauthUtility) {
+    return { signin: oauthPerso };
+
+    /*
+     * Sign into the Personal service
+     *
+     * @param    string clientId
+     * @param    array appScope
+     * @param    object options
+     * @return   promise
+     */
+    function oauthPerso(authUrl, clientId, appScope, options) {
+      var deferred = $q.defer();
+      if(window.cordova) {
+        if($cordovaOauthUtility.isInAppBrowserInstalled()) {
+          var redirect_uri = "http://localhost/callback";
+          if(options !== undefined) {
+            if(options.hasOwnProperty("redirect_uri")) {
+              redirect_uri = options.redirect_uri;
+            }
+          }
+          var flowUrl = authUrl + "?client_id=" + clientId + "&redirect_uri=" + redirect_uri + "&response_type=token&scope=" + appScope.join(",");
+          if(options !== undefined && options.hasOwnProperty("auth_type")) {
+            flowUrl += "&auth_type=" + options.auth_type;
+          }
+          var browserRef = window.cordova.InAppBrowser.open(flowUrl, '_blank', 'location=no,clearsessioncache=yes,clearcache=yes');
+          browserRef.addEventListener('loadstart', function(event) {
+            if((event.url).indexOf(redirect_uri) === 0) {
+              browserRef.removeEventListener("exit",function(event){});
+              browserRef.close();
+              var callbackResponse = (event.url).split("#")[1];
+              var responseParameters = (callbackResponse).split("&");
+              var parameterMap = [];
+              for(var i = 0; i < responseParameters.length; i++) {
+                parameterMap[responseParameters[i].split("=")[0]] = responseParameters[i].split("=")[1];
+              }
+              if(parameterMap.access_token !== undefined && parameterMap.access_token !== null) {
+                deferred.resolve({ access_token: parameterMap.access_token, expires_in: parameterMap.expires_in });
+              } else {
+                if ((event.url).indexOf("error_code=100") !== 0) {
+                  deferred.reject("OauthPerso returned error_code=100: Invalid permissions");
+                } else {
+                  deferred.reject("Problem authenticating");
+                }
+              }
+            }
+          });
+          browserRef.addEventListener('exit', function(event) {
+            deferred.reject("The sign in flow was canceled");
+          });
+        } else {
+          deferred.reject("Could not find InAppBrowser plugin");
+        }
+      } else {
+        deferred.reject("Cannot authenticate via a web browser");
+      }
+      return deferred.promise;
+    }
+  }
+
+  perso.$inject = ['$q', '$http', '$cordovaOauthUtility'];
 })();
 
 (function() {
